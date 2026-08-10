@@ -1,41 +1,53 @@
+using EduAssign.API.Data;
+using EduAssign.API.Services;
+using EduAssign.API.DTOs.Auth;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+// Controllers & OpenAPI
+builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+
+// MongoDB
+builder.Services.AddSingleton<MongoDbContext>();
+builder.Services.AddScoped(sp => sp.GetRequiredService<MongoDbContext>().Database);
+
+// Assignment service
+builder.Services.AddScoped<IAssignmentService, AssignmentService>();
+
+// Better Auth Custom Handler
+builder.Services.AddHttpClient(); 
+builder.Services.AddAuthentication("BetterAuth")
+    .AddScheme<BetterAuthOptions, BetterAuthHandler>("BetterAuth", options => { });
+
+builder.Services.AddAuthorization();
+
+// CORS (Configured for Better Auth Cookies)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:3000")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials(); // Enables cookies across ports
+    });
+});
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+app.UseCors("Frontend");
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+// Authentication MUST come before Authorization
+app.UseAuthentication();
+app.UseAuthorization();
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+app.MapControllers();
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
