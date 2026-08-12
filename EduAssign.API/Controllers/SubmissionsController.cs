@@ -1,91 +1,173 @@
-using EduAssign.API.DTOs.Submissions;
-using EduAssign.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using EduAssign.API.DTOs.Submissions;
+using EduAssign.API.Services;
 using System.Security.Claims;
 
-namespace EduAssign.API.Controllers
+namespace EduAssign.API.Controllers;
+
+[ApiController]
+[Route("api/submissions")]
+[Authorize]
+public class SubmissionsController : ControllerBase
 {
-    [ApiController]
-    [Route("api/[controller]")]
-    [Authorize]
-    public class SubmissionsController : ControllerBase
+    private readonly ISubmissionService _submissionService;
+
+    public SubmissionsController(ISubmissionService submissionService)
     {
-        private readonly ISubmissionService _submissionService;
+        _submissionService = submissionService;
+    }
 
-        public SubmissionsController(ISubmissionService submissionService)
+    private string GetUserId() => 
+        User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub") ?? string.Empty;
+
+    [HttpPost]
+    public async Task<IActionResult> CreateSubmission([FromBody] CreateSubmissionDto dto)
+    {
+        var studentId = GetUserId();
+        if (string.IsNullOrEmpty(studentId))
+            return Unauthorized(new { message = "User identity not found." });
+
+        try
         {
-            _submissionService = submissionService;
+            var result = await _submissionService.CreateSubmissionAsync(studentId, dto);
+            if (result == null) 
+                return NotFound(new { message = "Assignment not found or invalid ID." });
+                
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "An error occurred while creating the submission.", detail = ex.Message });
+        }
+    }
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateSubmission(string id, [FromBody] UpdateSubmissionDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(id) || id.Equals("undefined", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { message = "Invalid submission ID provided." });
         }
 
-        // POST: /api/submissions
-        [HttpPost]
-        public async Task<IActionResult> Submit([FromBody] CreateSubmissionDto dto)
-        {
-            var studentId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (studentId == null) return Unauthorized();
+        var studentId = GetUserId();
+        if (string.IsNullOrEmpty(studentId))
+            return Unauthorized(new { message = "User identity not found." });
 
-            try
-            {
-                var submission = await _submissionService.CreateSubmissionAsync(studentId, dto);
-                if (submission == null) return NotFound("Assignment not found.");
-                return Ok(submission);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
+        try
+        {
+            var result = await _submissionService.UpdateSubmissionAsync(studentId, id, dto);
+            if (result == null) 
+                return NotFound(new { message = "Submission not found." });
+                
+            return Ok(result);
         }
-
-        // GET: /api/submissions/my
-        [HttpGet("my")]
-        public async Task<IActionResult> GetMySubmissions()
+        catch (InvalidOperationException ex)
         {
-            var studentId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (studentId == null) return Unauthorized();
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "An error occurred while updating the submission.", detail = ex.Message });
+        }
+    }
 
+    [HttpGet("my")]
+    public async Task<IActionResult> GetMySubmissions()
+    {
+        var studentId = GetUserId();
+        if (string.IsNullOrEmpty(studentId))
+            return Unauthorized(new { message = "User identity not found." });
+
+        try
+        {
             var submissions = await _submissionService.GetMySubmissionsAsync(studentId);
             return Ok(submissions);
         }
-
-        // GET: /api/submissions/assignment/{assignmentId} (For student to check their specific submission)
-        [HttpGet("assignment/{assignmentId}")]
-        public async Task<IActionResult> GetMySubmissionForAssignment(string assignmentId)
+        catch (Exception ex)
         {
-            var studentId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (studentId == null) return Unauthorized();
+            return StatusCode(500, new { message = "An error occurred while retrieving submissions.", detail = ex.Message });
+        }
+    }
 
-            var submission = await _submissionService.GetSubmissionByAssignmentAsync(studentId, assignmentId);
-            return Ok(submission); // Returns 204 No Content if null, which is fine.
+    [HttpGet("teacher")]
+    public async Task<IActionResult> GetSubmissionsForTeacher()
+    {
+        var teacherId = GetUserId();
+        if (string.IsNullOrEmpty(teacherId))
+            return Unauthorized(new { message = "User identity not found." });
+
+        try
+        {
+            var submissions = await _submissionService.GetSubmissionsForTeacherAsync(teacherId);
+            return Ok(submissions);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "An error occurred while retrieving teacher submissions.", detail = ex.Message });
+        }
+    }
+
+    [HttpGet("assignment/{assignmentId}")]
+    public async Task<IActionResult> GetSubmissionsForAssignment(string assignmentId)
+    {
+        if (string.IsNullOrWhiteSpace(assignmentId) || assignmentId.Equals("undefined", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { message = "Assignment ID is required." });
         }
 
-        // PUT: /api/submissions/{id}
-        [HttpPut("{id}")]
-        public async Task<IActionResult> Update(string id, [FromBody] UpdateSubmissionDto dto)
+        try
         {
-            var studentId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (studentId == null) return Unauthorized();
+            var userId = GetUserId();
+            var role = User.FindFirstValue(ClaimTypes.Role)?.ToLowerInvariant();
 
-            try
+            if (role == "student")
             {
-                var result = await _submissionService.UpdateSubmissionAsync(studentId, id, dto);
-                if (result == null) return NotFound("Submission not found.");
-                return Ok(result);
+                var studentSubmission = await _submissionService.GetSubmissionByAssignmentAsync(userId, assignmentId);
+                return Ok(studentSubmission);
             }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
+
+            var submissions = await _submissionService.GetSubmissionsForAssignmentAsync(assignmentId);
+            return Ok(submissions);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "An error occurred while retrieving submissions.", detail = ex.Message });
+        }
+    }
+
+    [HttpPut("{id}/grade")]
+    public async Task<IActionResult> GradeSubmission(string id, [FromBody] GradeSubmissionDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(id) || id.Equals("undefined", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { message = "Invalid submission ID provided." });
         }
 
-        // PUT: /api/submissions/{id}/grade (For Teacher)
-        [HttpPut("{id}/grade")]
-        public async Task<IActionResult> Grade(string id, [FromBody] GradeSubmissionDto dto)
+        try
         {
-            // Note: In a real app, verify the user has the 'teacher' role here.
             var result = await _submissionService.GradeSubmissionAsync(id, dto);
-            if (result == null) return NotFound();
+            if (result == null) 
+                return NotFound(new { message = "Submission not found." });
+
+            if (dto.Status != null && dto.Status.Equals("Pending", StringComparison.OrdinalIgnoreCase))
+            {
+                return Ok(new { message = "Submission reset to Pending (deleted). The student can now resubmit.", data = result });
+            }
+                
             return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "An error occurred while grading the submission.", detail = ex.Message });
         }
     }
 }

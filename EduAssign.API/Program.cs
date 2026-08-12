@@ -18,13 +18,10 @@ builder.Services.AddScoped(
 
 
 // Services
-// builder.Services.AddScoped<
-//     IAssignmentService,
-//     AssignmentService
-// >();
+// Register Application Services for Dependency Injection
 builder.Services.AddScoped<IAssignmentService, AssignmentService>();
 builder.Services.AddScoped<IStudentService, StudentService>();
-builder.Services.AddScoped<ISubmissionService, SubmissionService>();
+builder.Services.AddScoped<ISubmissionService, SubmissionService>(); // 👈 THIS IS MISSING
 
 // Better Auth
 builder.Services.AddHttpClient();

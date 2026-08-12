@@ -1,10 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace EduAssign.API.DTOs.Submissions
+namespace EduAssign.API.DTOs.Submissions;
+
+public class UpdateSubmissionDto
 {
-    public class UpdateSubmissionDto
-    {
-        [Required]
-        public string Answer { get; set; } = null!;
-    }
+    [Required]
+    public string Answer { get; set; } = string.Empty;
 }

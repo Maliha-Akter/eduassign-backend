@@ -1,29 +1,34 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace EduAssign.API.Models
+namespace EduAssign.API.Models;
+
+public class Submission
 {
-    public class Submission
-    {
-        [BsonId]
-        [BsonRepresentation(BsonType.ObjectId)]
-        public string Id { get; set; } = null!;
+    [BsonId]
+    [BsonRepresentation(BsonType.ObjectId)]
+    public string Id { get; set; } = null!;
 
-        [BsonRepresentation(BsonType.ObjectId)]
-        public string AssignmentId { get; set; } = null!;
+    [BsonElement("AssignmentId")]
+    [BsonRepresentation(BsonType.ObjectId)]
+    public string AssignmentId { get; set; } = null!;
 
-        public string StudentId { get; set; } = null!; // BetterAuth User ID
+    [BsonElement("StudentId")]
+    [BsonRepresentation(BsonType.ObjectId)]
+    public string StudentId { get; set; } = null!;
 
-        public string Answer { get; set; } = string.Empty;
+    public string Answer { get; set; } = null!;
 
-        public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
+    public int? Marks { get; set; }
 
-        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public string? Feedback { get; set; }
 
-        public string Status { get; set; } = "Submitted"; // Submitted, Late, Graded
+    public string Status { get; set; } = "Submitted";
 
-        public int? Marks { get; set; }
+    public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
 
-        public string? Feedback { get; set; }
-    }
+    public DateTime? UpdatedAt { get; set; }
+
+    [BsonIgnore]
+    public string? Subject { get; set; }
 }

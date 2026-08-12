@@ -7,12 +7,10 @@ namespace EduAssign.API.Services;
 public class AssignmentService : IAssignmentService
 {
     private readonly IMongoCollection<Assignment> _assignments;
-    private readonly IMongoCollection<AppUser> _users;
 
     public AssignmentService(IMongoDatabase database)
     {
         _assignments = database.GetCollection<Assignment>("assignments");
-        _users = database.GetCollection<AppUser>("user");
     }
 
     public async Task<Assignment> CreateAssignmentAsync(CreateAssignmentRequest request, string teacherId)
@@ -41,7 +39,15 @@ public class AssignmentService : IAssignmentService
         return await _assignments.Find(filter).SortByDescending(a => a.CreatedAt).ToListAsync();
     }
 
-    // SAFE UPDATE: Only updates specific fields, preserves CreatedAt, TeacherId, etc.
+    public async Task<Assignment?> GetAssignmentByIdAsync(string id, string teacherId)
+    {
+        var filter = Builders<Assignment>.Filter.And(
+            Builders<Assignment>.Filter.Eq(a => a.Id, id),
+            Builders<Assignment>.Filter.Eq(a => a.TeacherId, teacherId)
+        );
+        return await _assignments.Find(filter).FirstOrDefaultAsync();
+    }
+
     public async Task<Assignment?> UpdateAssignmentAsync(string id, UpdateAssignmentRequest request, string teacherId)
     {
         var filter = Builders<Assignment>.Filter.And(
@@ -78,57 +84,20 @@ public class AssignmentService : IAssignmentService
         return result.DeletedCount > 0;
     }
 
-    public async Task<List<Assignment>> GetAssignmentsForStudentAsync(string studentId)
+    // Fetches all published (non-draft) assignments for students
+    public async Task<List<Assignment>> GetPublishedAssignmentsAsync()
     {
-        var student = await _users.Find(u => u.Id == studentId).FirstOrDefaultAsync();
-        
-        if (student == null || string.IsNullOrEmpty(student.Class))
-            return new List<Assignment>();
-
-        var classId = $"class_{student.Class}";
-
-        var filter = Builders<Assignment>.Filter.Eq(a => a.ClassId, classId);
-
+        var filter = Builders<Assignment>.Filter.Ne(a => a.Status, "Draft");
         return await _assignments.Find(filter).SortByDescending(a => a.CreatedAt).ToListAsync();
     }
 
-    // 👈 NEW/UPDATED: For general lookup (used by students) fetches Teacher Name and Email
-    public async Task<Assignment?> GetAssignmentByIdAsync(string id)
-    {
-        var assignment = await _assignments.Find(a => a.Id == id).FirstOrDefaultAsync();
-        
-        if (assignment != null)
-        {
-            var teacher = await _users.Find(u => u.Id == assignment.TeacherId).FirstOrDefaultAsync();
-            if (teacher != null)
-            {
-                assignment.TeacherName = teacher.Name;
-                assignment.TeacherEmail = teacher.Email; 
-            }
-        }
-        
-        return assignment;
-    }
-
-    // 👈 NEW/UPDATED: For teacher-restricted lookup fetches Teacher Name and Email
-    public async Task<Assignment?> GetAssignmentByIdAsync(string id, string teacherId)
+    // Fetches a single published assignment for students
+    public async Task<Assignment?> GetAssignmentByIdForStudentAsync(string id)
     {
         var filter = Builders<Assignment>.Filter.And(
             Builders<Assignment>.Filter.Eq(a => a.Id, id),
-            Builders<Assignment>.Filter.Eq(a => a.TeacherId, teacherId)
+            Builders<Assignment>.Filter.Ne(a => a.Status, "Draft")
         );
-        var assignment = await _assignments.Find(filter).FirstOrDefaultAsync();
-        
-        if (assignment != null)
-        {
-            var teacher = await _users.Find(u => u.Id == assignment.TeacherId).FirstOrDefaultAsync();
-            if (teacher != null)
-            {
-                assignment.TeacherName = teacher.Name;
-                assignment.TeacherEmail = teacher.Email; 
-            }
-        }
-
-        return assignment;
+        return await _assignments.Find(filter).FirstOrDefaultAsync();
     }
 }

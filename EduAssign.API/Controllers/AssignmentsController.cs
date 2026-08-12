@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using EduAssign.API.DTOs.Assignments;
 using EduAssign.API.Services;
+using EduAssign.API.Models;
 using System.Security.Claims;
 
 namespace EduAssign.API.Controllers;
@@ -46,32 +47,39 @@ public class AssignmentsController : ControllerBase
         return Ok(assignments);
     }
 
-    // FIXED: Now allows both teachers and students to fetch the assignment details
+    [HttpGet("student")]
+    [Authorize(Roles = "student")]
+    public async Task<IActionResult> GetStudentAssignments()
+    {
+        var assignments = await _assignmentService.GetPublishedAssignmentsAsync();
+        return Ok(assignments);
+    }
+
     [HttpGet("{id}")]
-    [Authorize(Roles = "teacher,student")]
+    [Authorize]
     public async Task<IActionResult> GetAssignmentById(string id)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var role = User.FindFirstValue(ClaimTypes.Role);
+
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        // If the user is a teacher, securely fetch using their teacherId
-        if (User.IsInRole("teacher"))
-        {
-            var assignment = await _assignmentService.GetAssignmentByIdAsync(id, userId);
-            if (assignment == null)
-                return NotFound(new { message = "Assignment not found or you do not have permission to view it." });
+        Assignment? assignment;
 
-            return Ok(assignment);
-        }
-        else // Otherwise, the user is a student
+        if (role == "teacher")
         {
-            var assignment = await _assignmentService.GetAssignmentByIdAsync(id);
-            if (assignment == null)
-                return NotFound(new { message = "Assignment not found." });
-
-            return Ok(assignment);
+            assignment = await _assignmentService.GetAssignmentByIdAsync(id, userId);
         }
+        else
+        {
+            assignment = await _assignmentService.GetAssignmentByIdForStudentAsync(id);
+        }
+
+        if (assignment == null)
+            return NotFound(new { message = "Assignment not found or you do not have permission to view it." });
+
+        return Ok(assignment);
     }
 
     [HttpPut("{id}")]
@@ -108,17 +116,5 @@ public class AssignmentsController : ControllerBase
             return NotFound(new { message = "Assignment not found or you do not have permission to delete it." });
 
         return Ok(new { message = "Assignment deleted successfully." });
-    }
-
-    [HttpGet("student")]
-    [Authorize(Roles = "student")] // SECURED: Added Authorize for students
-    public async Task<IActionResult> GetStudentAssignments()
-    {
-        var studentId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(studentId)) 
-            return Unauthorized();
-
-        var assignments = await _assignmentService.GetAssignmentsForStudentAsync(studentId);
-        return Ok(assignments);
     }
 }
