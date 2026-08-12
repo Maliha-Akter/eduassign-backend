@@ -1,6 +1,5 @@
 using EduAssign.API.Models;
 using EduAssign.API.DTOs.Submissions;
-using MongoDB.Bson;
 using MongoDB.Driver;
 
 namespace EduAssign.API.Services;
@@ -20,9 +19,6 @@ public class SubmissionService : ISubmissionService
 
     public async Task<Submission?> CreateSubmissionAsync(string studentId, CreateSubmissionDto dto)
     {
-        if (!ObjectId.TryParse(dto.AssignmentId, out _) || !ObjectId.TryParse(studentId, out _))
-            return null;
-
         var assignmentFilter = Builders<Assignment>.Filter.Eq(a => a.Id, dto.AssignmentId);
         var assignment = await _assignments.Find(assignmentFilter).FirstOrDefaultAsync();
         if (assignment == null) return null;
@@ -50,9 +46,6 @@ public class SubmissionService : ISubmissionService
 
     public async Task<Submission?> UpdateSubmissionAsync(string studentId, string submissionId, UpdateSubmissionDto dto)
     {
-        if (!ObjectId.TryParse(submissionId, out _) || !ObjectId.TryParse(studentId, out _))
-            return null;
-
         var submissionFilter = Builders<Submission>.Filter.And(
             Builders<Submission>.Filter.Eq(s => s.Id, submissionId),
             Builders<Submission>.Filter.Eq(s => s.StudentId, studentId)
@@ -76,68 +69,31 @@ public class SubmissionService : ISubmissionService
         return submission;
     }
 
-    public async Task<List<StudentSubmissionDto>> GetMySubmissionsAsync(string studentId)
+    public async Task<List<Submission>> GetMySubmissionsAsync(string studentId)
     {
-        if (!ObjectId.TryParse(studentId, out _))
-            return new List<StudentSubmissionDto>();
-
-        // 1. Fetch student's submissions sorted by date
         var filter = Builders<Submission>.Filter.Eq(s => s.StudentId, studentId);
         var submissions = await _submissions.Find(filter)
             .SortByDescending(s => s.SubmittedAt)
             .ToListAsync();
 
-        if (!submissions.Any()) 
-            return new List<StudentSubmissionDto>();
-
-        // 2. Fetch all matching assignments in a single batch query
         var assignmentIds = submissions.Select(s => s.AssignmentId).Distinct().ToList();
         var assignmentFilter = Builders<Assignment>.Filter.In(a => a.Id, assignmentIds);
         var assignments = await _assignments.Find(assignmentFilter).ToListAsync();
         var assignmentDict = assignments.ToDictionary(a => a.Id);
 
-        // 3. Map submissions and joined assignment details into DTOs
-        var result = new List<StudentSubmissionDto>(submissions.Count);
-
         foreach (var sub in submissions)
         {
-            assignmentDict.TryGetValue(sub.AssignmentId, out var assignment);
-
-            result.Add(new StudentSubmissionDto
+            if (assignmentDict.TryGetValue(sub.AssignmentId, out var assignment))
             {
-                Id = sub.Id,
-                AssignmentId = sub.AssignmentId,
-                StudentId = sub.StudentId,
-                Answer = sub.Answer ?? string.Empty,
-                SubmittedAt = sub.SubmittedAt,
-                UpdatedAt = sub.UpdatedAt,
-                Status = string.IsNullOrEmpty(sub.Status) 
-                    ? (sub.Marks.HasValue ? "Graded" : "Submitted") 
-                    : sub.Status,
-                Marks = sub.Marks,
-                Feedback = sub.Feedback,
-                SubjectId = assignment?.SubjectId ?? "N/A",
-                Assignment = assignment != null ? new AssignmentInfoDto
-                {
-                    Id = assignment.Id,
-                    Title = assignment.Title ?? string.Empty,
-                    Description = assignment.Description ?? string.Empty,
-                    SubjectId = assignment.SubjectId ?? string.Empty,
-                    ClassId = assignment.ClassId ?? string.Empty,
-                    MaximumMarks = assignment.MaximumMarks,
-                    Deadline = assignment.Deadline
-                } : null
-            });
+                sub.Subject = assignment.SubjectId; 
+            }
         }
 
-        return result;
+        return submissions;
     }
 
     public async Task<Submission?> GetSubmissionByAssignmentAsync(string studentId, string assignmentId)
     {
-        if (!ObjectId.TryParse(studentId, out _) || !ObjectId.TryParse(assignmentId, out _))
-            return null;
-
         var filter = Builders<Submission>.Filter.And(
             Builders<Submission>.Filter.Eq(s => s.StudentId, studentId),
             Builders<Submission>.Filter.Eq(s => s.AssignmentId, assignmentId)
@@ -147,18 +103,12 @@ public class SubmissionService : ISubmissionService
 
     public async Task<List<Submission>> GetSubmissionsForAssignmentAsync(string assignmentId)
     {
-        if (!ObjectId.TryParse(assignmentId, out _))
-            return new List<Submission>();
-
         var filter = Builders<Submission>.Filter.Eq(s => s.AssignmentId, assignmentId);
         return await _submissions.Find(filter).ToListAsync();
     }
 
     public async Task<List<TeacherSubmissionDto>> GetSubmissionsForTeacherAsync(string teacherId)
     {
-        if (!ObjectId.TryParse(teacherId, out _))
-            return new List<TeacherSubmissionDto>();
-
         var assignmentFilter = Builders<Assignment>.Filter.Eq(a => a.TeacherId, teacherId);
         var teacherAssignments = await _assignments.Find(assignmentFilter).ToListAsync();
 
@@ -212,13 +162,11 @@ public class SubmissionService : ISubmissionService
 
     public async Task<Submission?> GradeSubmissionAsync(string submissionId, GradeSubmissionDto dto)
     {
-        if (!ObjectId.TryParse(submissionId, out _))
-            return null;
-
         var filter = Builders<Submission>.Filter.Eq(s => s.Id, submissionId);
         var existing = await _submissions.Find(filter).FirstOrDefaultAsync();
         if (existing == null) return null;
 
+        // If status is set to Pending, delete the submission so the student can resubmit
         if (dto.Status != null && dto.Status.Equals("Pending", StringComparison.OrdinalIgnoreCase))
         {
             await _submissions.DeleteOneAsync(filter);

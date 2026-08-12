@@ -7,10 +7,7 @@ public interface ISubmissionService
 {
     Task<Submission?> CreateSubmissionAsync(string studentId, CreateSubmissionDto dto);
     Task<Submission?> UpdateSubmissionAsync(string studentId, string submissionId, UpdateSubmissionDto dto);
-    
-    // Updated return type to include populated assignment & subject details
-    Task<List<StudentSubmissionDto>> GetMySubmissionsAsync(string studentId);
-    
+    Task<List<Submission>> GetMySubmissionsAsync(string studentId);
     Task<Submission?> GetSubmissionByAssignmentAsync(string studentId, string assignmentId);
     
     // For Teachers
