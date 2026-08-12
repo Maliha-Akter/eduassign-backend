@@ -1,47 +1,88 @@
-using EduAssign.API.Models;
 using EduAssign.API.DTOs.Assignments;
+using EduAssign.API.Models;
 using MongoDB.Driver;
-using System.Threading.Tasks;
-using System;
 
-namespace EduAssign.API.Services
+namespace EduAssign.API.Services;
+
+public class AssignmentService : IAssignmentService
 {
-    public interface IAssignmentService
+    private readonly IMongoCollection<Assignment> _assignments;
+
+    public AssignmentService(IMongoDatabase database)
     {
-        Task<Assignment> CreateAssignmentAsync(CreateAssignmentRequest request, string teacherId);
+        _assignments = database.GetCollection<Assignment>("assignments");
     }
 
-    public class AssignmentService : IAssignmentService
+    public async Task<Assignment> CreateAssignmentAsync(CreateAssignmentRequest request, string teacherId)
     {
-        private readonly IMongoCollection<Assignment> _assignments;
-        // Assume you inject collections for Classes and Subjects to verify existence
-        // private readonly IMongoCollection<Class> _classes; 
-        
-        public AssignmentService(IMongoDatabase database)
+        var assignment = new Assignment
         {
-            _assignments = database.GetCollection<Assignment>("assignments");
-        }
+            TeacherId = teacherId,
+            Title = request.Title,
+            Description = request.Description,
+            ClassId = request.ClassId,
+            SubjectId = request.SubjectId,
+            Deadline = request.Deadline,
+            MaximumMarks = request.MaximumMarks,
+            Status = request.Status,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
 
-        public async Task<Assignment> CreateAssignmentAsync(CreateAssignmentRequest request, string teacherId)
+        await _assignments.InsertOneAsync(assignment);
+        return assignment;
+    }
+
+    public async Task<List<Assignment>> GetAssignmentsByTeacherAsync(string teacherId)
+    {
+        var filter = Builders<Assignment>.Filter.Eq(a => a.TeacherId, teacherId);
+        return await _assignments.Find(filter).SortByDescending(a => a.CreatedAt).ToListAsync();
+    }
+
+    public async Task<Assignment?> GetAssignmentByIdAsync(string id, string teacherId)
+    {
+        var filter = Builders<Assignment>.Filter.And(
+            Builders<Assignment>.Filter.Eq(a => a.Id, id),
+            Builders<Assignment>.Filter.Eq(a => a.TeacherId, teacherId)
+        );
+        return await _assignments.Find(filter).FirstOrDefaultAsync();
+    }
+
+    // SAFE UPDATE: Only updates specific fields, preserves CreatedAt, TeacherId, etc.
+    public async Task<Assignment?> UpdateAssignmentAsync(string id, UpdateAssignmentRequest request, string teacherId)
+    {
+        var filter = Builders<Assignment>.Filter.And(
+            Builders<Assignment>.Filter.Eq(a => a.Id, id),
+            Builders<Assignment>.Filter.Eq(a => a.TeacherId, teacherId)
+        );
+
+        // Using .Set ensures we ONLY overwrite these exact fields, keeping the rest of the document fully intact.
+        var update = Builders<Assignment>.Update
+            .Set(a => a.Title, request.Title)
+            .Set(a => a.Description, request.Description)
+            .Set(a => a.ClassId, request.ClassId)
+            .Set(a => a.SubjectId, request.SubjectId)
+            .Set(a => a.Deadline, request.Deadline)
+            .Set(a => a.MaximumMarks, request.MaximumMarks)
+            .Set(a => a.Status, request.Status)
+            .Set(a => a.UpdatedAt, DateTime.UtcNow);
+
+        var options = new FindOneAndUpdateOptions<Assignment>
         {
-            // TODO: (Rule 4 & 5) Await checks to ensure request.ClassId and request.SubjectId exist in DB
-            
-            var assignment = new Assignment
-            {
-                TeacherId = teacherId,
-                Title = request.Title,
-                Description = request.Description,
-                ClassId = request.ClassId,
-                SubjectId = request.SubjectId,
-                Deadline = request.Deadline,
-                MaximumMarks = request.MaximumMarks,
-                Status = request.Status,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
+            ReturnDocument = ReturnDocument.After // Returns the newly updated document
+        };
 
-            await _assignments.InsertOneAsync(assignment);
-            return assignment;
-        }
+        return await _assignments.FindOneAndUpdateAsync(filter, update, options);
+    }
+
+    public async Task<bool> DeleteAssignmentAsync(string id, string teacherId)
+    {
+        var filter = Builders<Assignment>.Filter.And(
+            Builders<Assignment>.Filter.Eq(a => a.Id, id),
+            Builders<Assignment>.Filter.Eq(a => a.TeacherId, teacherId)
+        );
+
+        var result = await _assignments.DeleteOneAsync(filter);
+        return result.DeletedCount > 0;
     }
 }

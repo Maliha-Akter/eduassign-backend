@@ -10,21 +10,35 @@ namespace EduAssign.API.Models
         [BsonRepresentation(BsonType.ObjectId)]
         public string Id { get; set; } = null!;
 
-        [BsonRepresentation(BsonType.ObjectId)]
+        [BsonElement("TeacherId")]
+        [BsonRepresentation(BsonType.ObjectId)] // ⚠️ REQUIRED: Maps string teacherId to native MongoDB ObjectId
         public string TeacherId { get; set; } = null!;
 
-        // Remove [BsonRepresentation(BsonType.ObjectId)] so they accept strings like "class_123"
+        [BsonElement("ClassId")]
         public string ClassId { get; set; } = null!;
 
+        [BsonElement("SubjectId")]
         public string SubjectId { get; set; } = null!;
 
+        [BsonElement("Title")]
         public string Title { get; set; } = null!;
-        public string Description { get; set; } = null!;
-        public DateTime Deadline { get; set; }
-        public int MaximumMarks { get; set; }
-        public string Status { get; set; } = "Draft"; // "Draft" or "Published"
         
+        [BsonElement("Description")]
+        public string Description { get; set; } = null!;
+        
+        [BsonElement("Deadline")]
+        public DateTime Deadline { get; set; }
+        
+        [BsonElement("MaximumMarks")]
+        public int MaximumMarks { get; set; }
+        
+        [BsonElement("Status")]
+        public string Status { get; set; } = "Draft";
+        
+        [BsonElement("CreatedAt")]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        
+        [BsonElement("UpdatedAt")]
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
 }
