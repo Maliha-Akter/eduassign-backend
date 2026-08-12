@@ -11,8 +11,15 @@ namespace EduAssign.API.Models
         public string Id { get; set; } = null!;
 
         [BsonElement("TeacherId")]
-        [BsonRepresentation(BsonType.ObjectId)] // ⚠️ REQUIRED: Maps string teacherId to native MongoDB ObjectId
+        [BsonRepresentation(BsonType.ObjectId)]
         public string TeacherId { get; set; } = null!;
+
+        [BsonIgnore]
+        public string? TeacherName { get; set; }
+
+        // 👈 NEW: Added TeacherEmail 
+        [BsonIgnore]
+        public string? TeacherEmail { get; set; }
 
         [BsonElement("ClassId")]
         public string ClassId { get; set; } = null!;

@@ -18,11 +18,13 @@ builder.Services.AddScoped(
 
 
 // Services
-builder.Services.AddScoped<
-    IAssignmentService,
-    AssignmentService
->();
-
+// builder.Services.AddScoped<
+//     IAssignmentService,
+//     AssignmentService
+// >();
+builder.Services.AddScoped<IAssignmentService, AssignmentService>();
+builder.Services.AddScoped<IStudentService, StudentService>();
+builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 
 // Better Auth
 builder.Services.AddHttpClient();

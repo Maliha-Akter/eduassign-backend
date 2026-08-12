@@ -46,22 +46,34 @@ public class AssignmentsController : ControllerBase
         return Ok(assignments);
     }
 
+    // FIXED: Now allows both teachers and students to fetch the assignment details
     [HttpGet("{id}")]
-    [Authorize(Roles = "teacher")]
+    [Authorize(Roles = "teacher,student")]
     public async Task<IActionResult> GetAssignmentById(string id)
     {
-        var teacherId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(teacherId))
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        var assignment = await _assignmentService.GetAssignmentByIdAsync(id, teacherId);
-        if (assignment == null)
-            return NotFound(new { message = "Assignment not found or you do not have permission to view it." });
+        // If the user is a teacher, securely fetch using their teacherId
+        if (User.IsInRole("teacher"))
+        {
+            var assignment = await _assignmentService.GetAssignmentByIdAsync(id, userId);
+            if (assignment == null)
+                return NotFound(new { message = "Assignment not found or you do not have permission to view it." });
 
-        return Ok(assignment);
+            return Ok(assignment);
+        }
+        else // Otherwise, the user is a student
+        {
+            var assignment = await _assignmentService.GetAssignmentByIdAsync(id);
+            if (assignment == null)
+                return NotFound(new { message = "Assignment not found." });
+
+            return Ok(assignment);
+        }
     }
 
-    // NEW: Update Endpoint
     [HttpPut("{id}")]
     [Authorize(Roles = "teacher")]
     public async Task<IActionResult> UpdateAssignment(string id, [FromBody] UpdateAssignmentRequest request)
@@ -82,7 +94,6 @@ public class AssignmentsController : ControllerBase
         });
     }
 
-    // NEW: Delete Endpoint
     [HttpDelete("{id}")]
     [Authorize(Roles = "teacher")]
     public async Task<IActionResult> DeleteAssignment(string id)
@@ -97,5 +108,17 @@ public class AssignmentsController : ControllerBase
             return NotFound(new { message = "Assignment not found or you do not have permission to delete it." });
 
         return Ok(new { message = "Assignment deleted successfully." });
+    }
+
+    [HttpGet("student")]
+    [Authorize(Roles = "student")] // SECURED: Added Authorize for students
+    public async Task<IActionResult> GetStudentAssignments()
+    {
+        var studentId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(studentId)) 
+            return Unauthorized();
+
+        var assignments = await _assignmentService.GetAssignmentsForStudentAsync(studentId);
+        return Ok(assignments);
     }
 }

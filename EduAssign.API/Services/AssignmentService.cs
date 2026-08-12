@@ -7,10 +7,12 @@ namespace EduAssign.API.Services;
 public class AssignmentService : IAssignmentService
 {
     private readonly IMongoCollection<Assignment> _assignments;
+    private readonly IMongoCollection<AppUser> _users;
 
     public AssignmentService(IMongoDatabase database)
     {
         _assignments = database.GetCollection<Assignment>("assignments");
+        _users = database.GetCollection<AppUser>("user");
     }
 
     public async Task<Assignment> CreateAssignmentAsync(CreateAssignmentRequest request, string teacherId)
@@ -39,15 +41,6 @@ public class AssignmentService : IAssignmentService
         return await _assignments.Find(filter).SortByDescending(a => a.CreatedAt).ToListAsync();
     }
 
-    public async Task<Assignment?> GetAssignmentByIdAsync(string id, string teacherId)
-    {
-        var filter = Builders<Assignment>.Filter.And(
-            Builders<Assignment>.Filter.Eq(a => a.Id, id),
-            Builders<Assignment>.Filter.Eq(a => a.TeacherId, teacherId)
-        );
-        return await _assignments.Find(filter).FirstOrDefaultAsync();
-    }
-
     // SAFE UPDATE: Only updates specific fields, preserves CreatedAt, TeacherId, etc.
     public async Task<Assignment?> UpdateAssignmentAsync(string id, UpdateAssignmentRequest request, string teacherId)
     {
@@ -56,7 +49,6 @@ public class AssignmentService : IAssignmentService
             Builders<Assignment>.Filter.Eq(a => a.TeacherId, teacherId)
         );
 
-        // Using .Set ensures we ONLY overwrite these exact fields, keeping the rest of the document fully intact.
         var update = Builders<Assignment>.Update
             .Set(a => a.Title, request.Title)
             .Set(a => a.Description, request.Description)
@@ -69,7 +61,7 @@ public class AssignmentService : IAssignmentService
 
         var options = new FindOneAndUpdateOptions<Assignment>
         {
-            ReturnDocument = ReturnDocument.After // Returns the newly updated document
+            ReturnDocument = ReturnDocument.After
         };
 
         return await _assignments.FindOneAndUpdateAsync(filter, update, options);
@@ -84,5 +76,59 @@ public class AssignmentService : IAssignmentService
 
         var result = await _assignments.DeleteOneAsync(filter);
         return result.DeletedCount > 0;
+    }
+
+    public async Task<List<Assignment>> GetAssignmentsForStudentAsync(string studentId)
+    {
+        var student = await _users.Find(u => u.Id == studentId).FirstOrDefaultAsync();
+        
+        if (student == null || string.IsNullOrEmpty(student.Class))
+            return new List<Assignment>();
+
+        var classId = $"class_{student.Class}";
+
+        var filter = Builders<Assignment>.Filter.Eq(a => a.ClassId, classId);
+
+        return await _assignments.Find(filter).SortByDescending(a => a.CreatedAt).ToListAsync();
+    }
+
+    // 👈 NEW/UPDATED: For general lookup (used by students) fetches Teacher Name and Email
+    public async Task<Assignment?> GetAssignmentByIdAsync(string id)
+    {
+        var assignment = await _assignments.Find(a => a.Id == id).FirstOrDefaultAsync();
+        
+        if (assignment != null)
+        {
+            var teacher = await _users.Find(u => u.Id == assignment.TeacherId).FirstOrDefaultAsync();
+            if (teacher != null)
+            {
+                assignment.TeacherName = teacher.Name;
+                assignment.TeacherEmail = teacher.Email; 
+            }
+        }
+        
+        return assignment;
+    }
+
+    // 👈 NEW/UPDATED: For teacher-restricted lookup fetches Teacher Name and Email
+    public async Task<Assignment?> GetAssignmentByIdAsync(string id, string teacherId)
+    {
+        var filter = Builders<Assignment>.Filter.And(
+            Builders<Assignment>.Filter.Eq(a => a.Id, id),
+            Builders<Assignment>.Filter.Eq(a => a.TeacherId, teacherId)
+        );
+        var assignment = await _assignments.Find(filter).FirstOrDefaultAsync();
+        
+        if (assignment != null)
+        {
+            var teacher = await _users.Find(u => u.Id == assignment.TeacherId).FirstOrDefaultAsync();
+            if (teacher != null)
+            {
+                assignment.TeacherName = teacher.Name;
+                assignment.TeacherEmail = teacher.Email; 
+            }
+        }
+
+        return assignment;
     }
 }
